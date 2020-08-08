@@ -6,17 +6,8 @@ process = Process.new(
   output: output_writer,
   error: output_writer)
 
-file = File.new(Path[Dir.current] / "output.txt", mode: "w")
-
-spawn do
-  loop do
-    if file.closed?
-      break
-    end
-    sleep 0.1
-    file.flush
-  end
-end
+file_path = Path[Dir.current] / "output.txt"
+file = File.new(file_path, mode: "w")
 
 spawn do
   sleep 3
@@ -30,6 +21,7 @@ spawn do
     if !prevent_file_write
       begin
         file.write(bytes)
+        file.flush
       rescue exception
         prevent_file_write = true
         puts "## EXCEPTION ##"
