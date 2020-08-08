@@ -1,35 +1,49 @@
-output_reader, output_writer = IO.pipe()
+require "http/server"
 
-process = Process.new(
-  command: "ping",
-  args: ["8.8.8.8", "-c", "6"],
-  output: output_writer,
-  error: output_writer)
+def run_http_server
+  server = HTTP::Server.new do |context|
+    context.response.headers.add("Content-Type", "text/plain")
+    context.response.headers.add("X-Content-Type-Options", "nosniff")
 
-file_path = Path[Dir.current] / "output.txt"
-file = File.new(file_path, mode: "w")
-
-spawn do
-  sleep 3
-  file.close
-end
-
-spawn do
-  prevent_file_write = false
-  output_reader.each_byte do |byte|
-    bytes = Slice.new(1, byte)
-    if !prevent_file_write
+    done = false
+    run_ping do |bytes|
+      if done
+        next
+      end
       begin
-        file.write(bytes)
-        file.flush
-      rescue exception
-        prevent_file_write = true
-        puts "## EXCEPTION ##"
+        context.response.write(bytes)
+        context.response.flush
+      rescue ex
+        puts "## FAILED ##"
+        done = true
       end
     end
-    print String.new(bytes, encoding: "utf8")
   end
+  puts "Listening on http://127.0.0.1:8080"
+  server.listen(8080)
 end
 
-process.wait
-file.close
+def run_ping(&block : Bytes -> Nil)
+  output_reader, output_writer = IO.pipe()
+  process = Process.new(
+    command: "ping",
+    args: ["8.8.8.8", "-c", "4"],
+    output: output_writer,
+    error: output_writer)
+
+  spawn do
+    output_reader.each_byte do |byte|
+      bytes = Slice.new(1, byte)
+      print String.new(bytes, encoding: "utf8")
+      block.call(bytes)
+    end
+  end
+
+  process.wait
+end
+
+
+spawn do
+  run_http_server
+end
+sleep
